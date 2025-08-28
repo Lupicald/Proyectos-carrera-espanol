@@ -1,5 +1,6 @@
 # Lista para almacenar las ventas del día
 ventas_del_dia = [] 
+
 # Bucle principal del programa
 while True:
     print("\n--- Sistema de Registro de Ventas ---")
@@ -18,7 +19,7 @@ while True:
         if tipo_cantidad == 'u':
             cantidad_final = int(cantidad_venta)
         elif tipo_cantidad == 'p':
-           cantidad_final = float(cantidad_venta)
+            cantidad_final = float(cantidad_venta)
         else:
             print("Tipo de cantidad no reconocido. Se asumirá unidades.")
             cantidad_final = int(cantidad_venta)
@@ -27,13 +28,15 @@ while True:
     
     elif opcion == '2':
         # Código para ver el reporte
-        # Aquí iría el bucle para sumar los subtotales de la lista
-        # Y la impresión del total
-        pass
-    
+        total_del_dia = 0 
+        for venta in ventas_del_dia:
+            total_del_dia += venta
+        print(f"\n--- Reporte de Ventas del Día ---")
+        print(f"Total vendido: ${total_del_dia:.2f}") 
+        
     elif opcion == '3':
         print("Saliendo del programa. ¡Hasta luego!")
-        break  
-        
+        break
+
     else:
         print("Opción no válida. Por favor, intente de nuevo.")
