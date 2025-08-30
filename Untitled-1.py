@@ -1,4 +1,1 @@
-y = input()
-x = input()
-print(x + y)
-
+print(input("pelicula favorita"))
