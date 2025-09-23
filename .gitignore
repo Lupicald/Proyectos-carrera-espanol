@@ -1,1 +1,14 @@
 .env
+data/Chepe_20250923.txt
+data/inventario.txt
+data/inventario.txt
+data/notas_importantes.txt
+data/ventas_2025-09.txt
+data/inventario.txt
+data/precios_proveedores.txt
+logs/app.log
+logs/sistema_archivos.log
+logs/sistema_ventas.log
+logs/app.log
+data/ventas_diarias.txt
+data/inventario.txt

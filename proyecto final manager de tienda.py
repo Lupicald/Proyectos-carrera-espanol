@@ -1,277 +1,318 @@
-"""
-Sistema de registro con POO (v2).
-Objetivo: mejorar estructura, reutilización, manejo de archivos y excepciones.
-"""
 
-from __future__ import annotations
-import os
-from pathlib import Path
+"""
+Sistema de Registro de Ventas v2.0
+Proyecto Final - Programación Avanzada en Python
+
+Este programa funciona como un punto de venta simple, permitiendo registrar
+ventas, crear reportes mensuales y visualizar los ingresos.
+"""
+# --- Importación de Módulos Necesarios ---
 import time
 import logging
+import os
 from datetime import datetime
+from pathlib import Path
 from typing import Tuple, List, Optional
 
-# Windows: entrada no bloqueante para el timeout opcional
+# Se intenta importar 'msvcrt' para una mejor experiencia en Windows
 try:
-    import msvcrt  # Solo Windows
-    WINDOWS = True
-except Exception:
-    WINDOWS = False
+    import msvcrt
+    IS_WINDOWS = True
+except ImportError:
+    IS_WINDOWS = False
 
-# --- Configuración de logging ---
-LOG_DIR = Path(__file__).with_name("logs")
+# --- Configuración Inicial ---
+LOG_DIR = Path(__file__).parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 logging.basicConfig(
-    filename=LOG_DIR / "app.log",
+    filename=LOG_DIR / "sistema_ventas.log",
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
+    format="%(asctime)s [%(levelname)s] - %(message)s",
 )
 
-DATA_DIR = Path(__file__).with_name("data")  # Carpeta para archivos de ejemplo
+DATA_DIR = Path(__file__).parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
 
-class Usuario:
-    """Representa a un usuario del sistema."""
+# --- Definición de Clases ---
 
+class Usuario:
+    """Representa al vendedor/cajero que usa el sistema."""
     def __init__(self, nickname: str) -> None:
         self.nickname = nickname.strip()
 
     def saludo(self) -> str:
-        return f"Bienvenido/a, {self.nickname}."
-
+        return f"¡Hola, {self.nickname}! Bienvenido/a al sistema de ventas."
 
 class Venta:
-    """Entidad de Venta. Mantén simple: producto, precio, cantidad, fecha, usuario."""
-
-    def __init__(
-        self,
-        producto: str,
-        precio: float,
-        cantidad: float,
-        fecha: Tuple[int, int, int],
-        usuario: Usuario,
-    ) -> None:
+    """Representa una única transacción de venta."""
+    def __init__(self, producto: str, cantidad: float, precio: float, usuario: Usuario) -> None:
         self.producto = producto
-        self.precio = precio
         self.cantidad = cantidad
-        self.fecha = fecha  # (día, mes, año)
+        self.precio_unitario = precio
         self.usuario = usuario
 
     @property
     def subtotal(self) -> float:
-        return self.precio * self.cantidad
-
-    def to_line(self) -> str:
-        d, m, a = self.fecha
-        return f"{a:04d}-{m:02d}-{d:02d},{self.usuario.nickname},{self.producto},{self.cantidad},{self.precio},{self.subtotal}\n"
-
+        """Calcula el subtotal de la venta."""
+        return self.cantidad * self.precio_unitario
+    
+    def to_linea_reporte(self) -> str:
+        """Formatea la venta como una línea para el archivo de reporte."""
+        return (f"{self.usuario.nickname},{self.producto},{self.cantidad},"
+                f"{self.precio_unitario:.2f},{self.subtotal:.2f}")
 
 class GestorArchivos:
-    """Operaciones de crear, escribir y leer archivos con manejo de errores."""
-
+    """Gestiona los archivos de reporte de ventas."""
     def __init__(self, base_dir: Path) -> None:
         self.base_dir = base_dir
 
-    def listar(self) -> List[str]:
-        return [p.name for p in self.base_dir.glob("*.txt")]
+    def listar_reportes(self) -> List[str]:
+        return [p.name for p in self.base_dir.glob("ventas_*.txt")]
 
-    def crear(self, nombre: str, fecha: Tuple[int, int, int]) -> Path:
-        d, m, a = fecha
-        # Sugerencia: incorpora la fecha al nombre
-        fname = f"{nombre}_{a:04d}{m:02d}{d:02d}.txt"
-        path = self.base_dir / fname
-        if path.exists():
-            raise FileExistsError(f"El archivo {fname} ya existe.")
-        path.write_text("")  # crea vacío
-        logging.info("Archivo creado: %s", path)
-        return path
+    def crear_reporte_mensual(self, anio: int, mes: int) -> Path:
+        nombre_reporte = f"ventas_{anio:04d}-{mes:02d}.txt"
+        path_reporte = self.base_dir / nombre_reporte
+        
+        if path_reporte.exists():
+            raise FileExistsError(f"ERROR: El reporte '{nombre_reporte}' ya existe.")
+        
+        path_reporte.touch()
+        logging.info(f"Reporte mensual creado: {path_reporte.name}")
+        return path_reporte
 
-    def escribir(self, nombre: str, contenido: str) -> None:
-        path = self.base_dir / nombre
-        if not path.exists():
-            raise FileNotFoundError(f"No existe: {nombre}")
-        with path.open("a", encoding="utf-8") as f:
-            f.write(contenido)
-        logging.info("Escritura OK en: %s", path)
+    def registrar_venta(self, nombre_reporte: str, venta: Venta, fecha: Tuple[int, int, int]) -> None:
+        path_reporte = self.base_dir / nombre_reporte
+        if not path_reporte.exists():
+            raise FileNotFoundError(f"ERROR: El reporte '{nombre_reporte}' no existe.")
+        
+        dia, mes, anio = fecha
+        timestamp = f"[{anio:04d}-{mes:02d}-{dia:02d}]: "
+        
+        with path_reporte.open("a", encoding="utf-8") as f:
+            f.write(timestamp + venta.to_linea_reporte() + "\n")
+            
+        logging.info(f"Venta registrada en: {path_reporte.name}")
 
-    def leer(self, nombre: str) -> str:
-        path = self.base_dir / nombre
-        if not path.exists():
-            raise FileNotFoundError(f"No existe: {nombre}")
-        data = path.read_text(encoding="utf-8")
-        logging.info("Lectura OK de: %s", path)
-        return data
-
+    def leer_reporte(self, nombre_reporte: str) -> Tuple[str, float]:
+        path_reporte = self.base_dir / nombre_reporte
+        if not path_reporte.exists():
+            raise FileNotFoundError(f"ERROR: El reporte '{nombre_reporte}' no existe.")
+            
+        contenido = path_reporte.read_text(encoding="utf-8")
+        total_ventas = 0.0
+        for i, linea in enumerate(contenido.splitlines()):
+            try:
+                if "]: " not in linea:
+                    continue
+                partes = linea.split("]: ")[1]
+                subtotal_str = partes.split(',')[-1]
+                total_ventas += float(subtotal_str)
+            except (IndexError, ValueError):
+                logging.warning(f"Línea {i+1} mal formada en '{nombre_reporte}': '{linea}'")
+                continue
+        
+        logging.info(f"Reporte leído: {path_reporte.name}")
+        return contenido, total_ventas
 
 class App:
-    """Controla el flujo de la aplicación."""
-
+    """Clase principal que controla el flujo de la aplicación de ventas."""
     def __init__(self) -> None:
         self.usuario: Optional[Usuario] = None
-        self.archivos = GestorArchivos(DATA_DIR)
-        self._sembrar_archivos()  # Tener 4+ archivos para lectura
+        self.gestor = GestorArchivos(DATA_DIR)
+        self._sembrar_reportes_iniciales()
 
-    # ---------- Utilidades de UI ----------
+    # --- Métodos de Interfaz de Usuario (UI) ---
+    def limpiar_pantalla(self):
+        """Limpia la pantalla de la consola para una mejor legibilidad."""
+        os.system('cls' if os.name == 'nt' else 'clear')
+
     def pedir_usuario(self) -> None:
-        nick = input("Escribe tu nombre o nickname: ").strip()
-        self.usuario = Usuario(nick)
-        print(self.usuario.saludo())
-        logging.info("Usuario activo: %s", self.usuario.nickname)
-
-    def carga(self, max_seg: int = 5) -> None:
-        """Mensaje de espera (máx. 5s)."""
-        max_seg = min(max_seg, 5)
-        print("Cargando programa", end="", flush=True)
+        """Solicita el nombre de usuario y crea el objeto correspondiente."""
+        while not self.usuario:
+            nick = input("Por favor, introduce tu nombre de vendedor: ").strip()
+            if nick:
+                self.usuario = Usuario(nick)
+                print(self.usuario.saludo())
+                logging.info(f"Vendedor activo: {self.usuario.nickname}")
+            else:
+                print("El nombre no puede estar vacío.")
+    
+    def carga(self, max_seg: int = 3) -> None:
+        """Muestra un mensaje de carga simulado."""
+        print("Iniciando sistema de punto de venta", end="", flush=True)
         for _ in range(max_seg):
-            time.sleep(1)
+            time.sleep(0.5)
             print(".", end="", flush=True)
-        print()
+        print("\n¡Sistema listo!")
 
     def pedir_fecha(self) -> Tuple[int, int, int]:
-        """Solicita fecha dd/mm/aaaa y retorna tupla (d, m, a) con validación."""
+        """Solicita una fecha y la valida."""
         while True:
-            s = input("Ingresa la fecha (dd/mm/aaaa): ").strip()
+            s = input("-> Ingresa la fecha de la transacción (dd/mm/aaaa): ").strip()
             try:
                 dt = datetime.strptime(s, "%d/%m/%Y")
                 return (dt.day, dt.month, dt.year)
             except ValueError:
-                print("Formato inválido. Ejemplo: 12/06/2023")
+                print("ERROR: Formato inválido. Ejemplo: 25/12/2023.")
 
-    # ---------- Menú con timeout ----------
     def mostrar_menu(self) -> None:
-        # Matriz de opciones (fila x columna)
-        print("\n=== Menú Principal ===")
-        print("[1] Crear archivo    | [2] Escribir archivo")
-        print("[3] Leer archivo     | [4] Cambiar usuario")
-        print("[5] Salir")
+        """Muestra el menú principal de opciones."""
+        print("\n" + "="*45)
+        print(" " * 12 + "MENÚ PUNTO DE VENTA")
+        print("="*45)
+        print("[1] Registrar Nueva Venta | [2] Ver Reporte de Ventas")
+        print("[3] Crear Reporte Mensual | [4] Cambiar de Vendedor")
+        print("[5] Salir del Sistema")
+        print("="*45)
 
-    def input_con_timeout(self, segundos: int = 600) -> Optional[str]:
-        """
-        Lee la opción con un for que mide el tiempo.
-        Si pasan 'segundos' sin elegir, pregunta si desea continuar.
-        En Windows, usa entrada no bloqueante (msvcrt) para cumplir el enunciado.
-        """
-        if WINDOWS:
-            print("Selecciona una opción (tienes 10 minutos): ", end="", flush=True)
+    def input_con_timeout(self, segundos: int) -> str:
+        """Espera la entrada del usuario con un tiempo límite."""
+        print(f"Selecciona una opción (tienes {segundos // 60} minutos): ", end="", flush=True)
+        inicio = time.monotonic()
+        if IS_WINDOWS:
             buffer = ""
             for _ in range(segundos):
                 time.sleep(1)
-                # Si hay teclas presionadas, acumular
-                while msvcrt.kbhit():
-                    ch = msvcrt.getwch()
-                    if ch == "\r":  # Enter
-                        print()
-                        return buffer.strip()
-                    elif ch == "\b":
-                        buffer = buffer[:-1]
-                    else:
-                        buffer += ch
-                # (Opcional) mostrar un pequeño indicador cada 30s
-                # TODO: mostrar progreso si lo deseas
-            # Timeout
-            print("\nHan pasado 10 minutos sin seleccionar.")
-            seguir = input("¿Deseas continuar? (si/no): ").strip().lower()
-            if seguir == "si":
-                return None  # vuelve al menú
-            else:
-                return "5"  # salir
+                if msvcrt.kbhit():
+                    char = msvcrt.getwch()
+                    if char == '\r': print(); return buffer.strip()
+                    elif char == '\b':
+                        if buffer: buffer = buffer[:-1]; print('\b \b', end='', flush=True)
+                    else: buffer += char; print(char, end='', flush=True)
         else:
-            # Fallback simple: medir el tiempo entre prompt y respuesta.
-            inicio = time.monotonic()
-            op = input("Selecciona una opción: ").strip()
-            transcurrido = time.monotonic() - inicio
-            if transcurrido >= segundos:
-                seguir = input("¿Deseas continuar? (si/no): ").strip().lower()
-                if seguir != "si":
-                    return "5"
-            return op
+            opcion = input()
+            if (time.monotonic() - inicio) < segundos: return opcion
+        print("\nEl tiempo de espera ha finalizado.")
+        while True:
+            seguir = input("¿Deseas continuar en el sistema? (si/no): ").strip().lower()
+            if seguir == "si": return "continue"
+            elif seguir == "no": return "4"
+            else: print("Respuesta no válida.")
+    
+    # --- Lógica de Negocio de la Tienda ---
+    def registrar_nueva_venta(self) -> None:
+        """Lógica para registrar una nueva venta en un reporte."""
+        print("\n--- Registrar Nueva Venta ---")
+        reportes = self.gestor.listar_reportes()
+        if not reportes:
+            print("No hay reportes de ventas. Crea uno primero con la opción 3.")
+            return
+        
+        print("Reportes disponibles:", ", ".join(reportes))
+        nombre_reporte = input("-> Escribe el nombre del reporte para añadir la venta: ").strip()
 
-    # ---------- Casos de uso ----------
-    def crear_archivo(self) -> None:
-        fecha = self.pedir_fecha()
-        nombre = input("Nombre base del archivo: ").strip()
+        producto = input("-> Nombre del producto: ").strip()
+        if not producto:
+            print("\nEl nombre del producto no puede estar vacío. Venta cancelada.")
+            return
+            
+        while True:
+            try:
+                cantidad = float(input("-> Cantidad vendida: "))
+                break
+            except ValueError:
+                print("Error: la cantidad debe ser un número.")
+        while True:
+            try:
+                precio = float(input("-> Precio unitario: $"))
+                break
+            except ValueError:
+                print("Error: el precio debe ser un número.")
+                
         try:
-            path = self.archivos.crear(nombre, fecha)
-            print(f"Archivo creado: {path.name}")
+            fecha = self.pedir_fecha()
+            venta = Venta(producto, cantidad, precio, self.usuario)
+            self.gestor.registrar_venta(nombre_reporte, venta, fecha)
+            print(f"\n¡Venta registrada exitosamente en '{nombre_reporte}'!")
+            print(f"Subtotal: ${venta.subtotal:.2f}")
+        except FileNotFoundError as e:
+            print(e)
+
+    def ver_reporte_ventas(self) -> None:
+        """Muestra un reporte de ventas y el total de ingresos."""
+        print("\n--- Ver Reporte de Ventas ---")
+        reportes = self.gestor.listar_reportes()
+        if not reportes:
+            print("No hay reportes de ventas para mostrar.")
+            return
+        
+        print("Reportes disponibles:", ", ".join(reportes))
+        nombre_reporte = input("-> Escribe el nombre del reporte que quieres ver: ").strip()
+        if not nombre_reporte:
+            print("No se seleccionó ningún reporte.")
+            return
+
+        try:
+            contenido, total = self.gestor.leer_reporte(nombre_reporte)
+            self.limpiar_pantalla()
+            print(f"\n--- Contenido de: {nombre_reporte} ---")
+            print(contenido if contenido else "(Reporte vacío)")
+            print("-" * (len(nombre_reporte) + 20))
+            print(f"TOTAL DE INGRESOS EN ESTE REPORTE: ${total:.2f}")
+            print("-" * (len(nombre_reporte) + 20))
+        except FileNotFoundError as e:
+            print(e)
+            
+    def crear_reporte_mensual(self) -> None:
+        """Crea un nuevo archivo de reporte mensual."""
+        print("\n--- Crear Nuevo Reporte Mensual ---")
+        try:
+            anio = int(input("-> Ingresa el año (ej: 2023): "))
+            mes = int(input("-> Ingresa el mes (ej: 10 para Octubre): "))
+            if not (1 <= mes <= 12 and 2000 < anio < 2100):
+                print("Error: Mes (1-12) o año inválido.")
+                return
+            
+            path = self.gestor.crear_reporte_mensual(anio, mes)
+            print(f"¡Éxito! Reporte '{path.name}' creado.")
+        except ValueError:
+            print("Error: Año y mes deben ser números.")
         except FileExistsError as e:
             print(e)
 
-    def escribir_archivo(self) -> None:
-        files = self.archivos.listar()
-        if not files:
-            print("No hay archivos. Crea uno primero.")
-            return
-        print("Archivos disponibles:", files)
-        nombre = input("¿A cuál escribir? (exacto): ").strip()
-        # Ejemplo de contenido: registro de venta (puedes cambiarlo)
-        fecha = self.pedir_fecha()
-        # TODO: pide datos reales de la venta si tu caso de uso lo requiere
-        producto = input("Producto: ")
-        try:
-            precio = float(input("Precio: "))
-            cantidad = float(input("Cantidad: "))
-        except ValueError:
-            print("Precio y cantidad deben ser numéricos.")
-            return
-        venta = Venta(producto, precio, cantidad, fecha, self.usuario or Usuario("anon"))
-        try:
-            self.archivos.escribir(nombre, venta.to_line())
-            print("Escritura realizada.")
-        except FileNotFoundError as e:
-            print(e)
-
-    def leer_archivo(self) -> None:
-        files = self.archivos.listar()
-        if not files:
-            print("No hay archivos para leer.")
-            return
-        print("Archivos disponibles:", files)
-        nombre = input("¿Cuál deseas abrir? (exacto): ").strip()
-        try:
-            contenido = self.archivos.leer(nombre)
-            print("\n--- Contenido ---")
-            print(contenido if contenido else "(vacío)")
-        except FileNotFoundError as e:
-            print(e)
-
     def cambiar_usuario(self) -> None:
+        """Cierra la sesión del usuario actual y solicita uno nuevo."""
+        print("\n--- Cambiando de Vendedor ---")
+        self.usuario = None
         self.pedir_usuario()
+        self.carga(2)
 
-    # ---------- Bootstrapping ----------
-    def _sembrar_archivos(self) -> None:
-        """Garantiza que existan ≥4 archivos para pruebas de lectura."""
-        base = ["inventario", "precios", "ventas", "notas"]
-        for n in base:
-            p = DATA_DIR / f"{n}.txt"
-            if not p.exists():
-                p.write_text("", encoding="utf-8")
+    # --- Bucle Principal y Arranque ---
+    def _sembrar_reportes_iniciales(self) -> None:
+        """Asegura que existan reportes de ejemplo."""
+        now = datetime.now()
+        mes_actual_file = f"ventas_{now.year:04d}-{now.month:02d}.txt"
+        if not (DATA_DIR / mes_actual_file).exists():
+            (DATA_DIR / mes_actual_file).touch()
 
-    # ---------- Loop principal ----------
     def run(self) -> None:
-        print("Sistema de Registro (POO)")
+        """Bucle principal que ejecuta la aplicación."""
+        self.limpiar_pantalla()
+        print("--- Sistema de Registro de Ventas v3.2 ---")
         self.pedir_usuario()
-        self.carga(5)
+        self.carga()
+        
         while True:
+            self.limpiar_pantalla()
             self.mostrar_menu()
-            op = self.input_con_timeout(600)
-            if op is None:
-                # Usuario eligió continuar tras timeout
-                continue
-            if op == "1":
-                self.crear_archivo()
-            elif op == "2":
-                self.escribir_archivo()
-            elif op == "3":
-                self.leer_archivo()
-            elif op == "4":
-                self.cambiar_usuario()
-            elif op == "5":
-                print("Saliendo. ¡Hasta luego!")
+            opcion = self.input_con_timeout(600)
+            
+            self.limpiar_pantalla()
+            if opcion == "continue": continue
+            if opcion == "1": self.registrar_nueva_venta()
+            elif opcion == "2": self.ver_reporte_ventas()
+            elif opcion == "3": self.crear_reporte_mensual()
+            elif opcion == "4": self.cambiar_usuario()
+            elif opcion == "5":
+                print("Cerrando sistema. ¡Hasta luego!")
                 break
             else:
-                print("Opción inválida.")
+                print("Opción no válida. Elige un número del 1 al 5.")
+            
+            input("\nPresiona Enter para volver al menú...")
 
+# --- Punto de Entrada de la Aplicación ---
 if __name__ == "__main__":
     app = App()
     app.run()
