@@ -1,4 +1,3 @@
-
 """
 Sistema de Registro de Ventas v2.0
 Proyecto Final - Programación Avanzada en Python
@@ -63,9 +62,59 @@ class Venta:
                 f"{self.precio_unitario:.2f},{self.subtotal:.2f}")
 
 class GestorArchivos:
-    """Gestiona los archivos de reporte de ventas."""
+    """Gestiona los archivos de reporte de ventas y archivos generales."""
     def __init__(self, base_dir: Path) -> None:
         self.base_dir = base_dir
+        self._crear_archivos_iniciales()
+
+    def _crear_archivos_iniciales(self) -> None:
+        """Crea 4 archivos iniciales si no existen."""
+        archivos_base = [
+            "inventario.txt",
+            "proveedores.txt", 
+            "clientes.txt",
+            "configuracion.txt"
+        ]
+        for archivo in archivos_base:
+            path = self.base_dir / archivo
+            if not path.exists():
+                path.write_text("# Archivo creado automáticamente\n", encoding="utf-8")
+
+    def listar_todos_archivos(self) -> List[str]:
+        """Lista todos los archivos .txt disponibles."""
+        return [p.name for p in self.base_dir.glob("*.txt")]
+
+    def crear_archivo_personalizado(self, nombre: str, contenido_inicial: str = "") -> Path:
+        """Crea un nuevo archivo personalizado."""
+        if not nombre.endswith('.txt'):
+            nombre += '.txt'
+        
+        path_archivo = self.base_dir / nombre
+        if path_archivo.exists():
+            raise FileExistsError(f"ERROR: El archivo '{nombre}' ya existe.")
+        
+        path_archivo.write_text(contenido_inicial or "# Archivo nuevo\n", encoding="utf-8")
+        logging.info(f"Archivo personalizado creado: {nombre}")
+        return path_archivo
+
+    def leer_archivo_general(self, nombre_archivo: str) -> str:
+        """Lee cualquier archivo de texto."""
+        path_archivo = self.base_dir / nombre_archivo
+        if not path_archivo.exists():
+            raise FileNotFoundError(f"ERROR: El archivo '{nombre_archivo}' no existe.")
+        
+        return path_archivo.read_text(encoding="utf-8")
+
+    def escribir_archivo_general(self, nombre_archivo: str, contenido: str, modo: str = "w") -> None:
+        """Escribe contenido en un archivo."""
+        path_archivo = self.base_dir / nombre_archivo
+        if not path_archivo.exists() and modo == "a":
+            raise FileNotFoundError(f"ERROR: El archivo '{nombre_archivo}' no existe.")
+        
+        with path_archivo.open(modo, encoding="utf-8") as f:
+            f.write(contenido)
+        
+        logging.info(f"Contenido {'agregado' if modo == 'a' else 'escrito'} en: {nombre_archivo}")
 
     def listar_reportes(self) -> List[str]:
         return [p.name for p in self.base_dir.glob("ventas_*.txt")]
@@ -162,8 +211,8 @@ class App:
         print(" " * 12 + "MENÚ PUNTO DE VENTA")
         print("="*45)
         print("[1] Registrar Nueva Venta | [2] Ver Reporte de Ventas")
-        print("[3] Crear Reporte Mensual | [4] Cambiar de Vendedor")
-        print("[5] Salir del Sistema")
+        print("[3] Crear Reporte Mensual | [4] Gestionar Archivos")
+        print("[5] Cambiar de Vendedor | [6] Salir del Sistema")
         print("="*45)
 
     def input_con_timeout(self, segundos: int) -> str:
@@ -278,6 +327,78 @@ class App:
         self.pedir_usuario()
         self.carga(2)
 
+    def gestionar_archivos(self) -> None:
+        """Menú para gestión general de archivos."""
+        while True:
+            print("\n--- Gestión de Archivos ---")
+            print("[1] Listar archivos | [2] Crear archivo")
+            print("[3] Leer archivo | [4] Escribir en archivo")
+            print("[5] Volver al menú principal")
+            
+            opcion = input("Selecciona una opción: ").strip()
+            
+            if opcion == "1":
+                archivos = self.gestor.listar_todos_archivos()
+                print(f"\nArchivos disponibles ({len(archivos)}):")
+                for i, archivo in enumerate(archivos, 1):
+                    print(f"{i}. {archivo}")
+                    
+            elif opcion == "2":
+                nombre = input("Nombre del archivo: ").strip()
+                contenido = input("Contenido inicial (opcional): ").strip()
+                try:
+                    self.gestor.crear_archivo_personalizado(nombre, contenido)
+                    print(f"¡Archivo '{nombre}' creado exitosamente!")
+                except FileExistsError as e:
+                    print(e)
+                    
+            elif opcion == "3":
+                archivos = self.gestor.listar_todos_archivos()
+                if not archivos:
+                    print("No hay archivos disponibles.")
+                    continue
+                    
+                print("Archivos disponibles:", ", ".join(archivos))
+                nombre = input("Nombre del archivo a leer: ").strip()
+                try:
+                    contenido = self.gestor.leer_archivo_general(nombre)
+                    print(f"\n--- Contenido de {nombre} ---")
+                    print(contenido)
+                    print("-" * (len(nombre) + 20))
+                except FileNotFoundError as e:
+                    print(e)
+                    
+            elif opcion == "4":
+                archivos = self.gestor.listar_todos_archivos()
+                print("Archivos disponibles:", ", ".join(archivos))
+                nombre = input("Nombre del archivo: ").strip()
+                modo = input("Modo (w=sobrescribir, a=agregar): ").strip().lower()
+                if modo not in ['w', 'a']:
+                    print("Modo inválido.")
+                    continue
+                    
+                print("Escribe el contenido (termina con una línea vacía):")
+                lineas = []
+                while True:
+                    linea = input()
+                    if not linea:
+                        break
+                    lineas.append(linea)
+                
+                contenido = "\n".join(lineas) + "\n"
+                try:
+                    self.gestor.escribir_archivo_general(nombre, contenido, modo)
+                    print("¡Contenido guardado exitosamente!")
+                except FileNotFoundError as e:
+                    print(e)
+                    
+            elif opcion == "5":
+                break
+            else:
+                print("Opción no válida.")
+            
+            input("\nPresiona Enter para continuar...")
+
     # --- Bucle Principal y Arranque ---
     def _sembrar_reportes_iniciales(self) -> None:
         """Asegura que existan reportes de ejemplo."""
@@ -289,7 +410,7 @@ class App:
     def run(self) -> None:
         """Bucle principal que ejecuta la aplicación."""
         self.limpiar_pantalla()
-        print("--- Sistema de Registro de Ventas v3.2 ---")
+        print("--- Sistema de Registro de Ventas v2.0 ---")
         self.pedir_usuario()
         self.carga()
         
@@ -303,12 +424,13 @@ class App:
             if opcion == "1": self.registrar_nueva_venta()
             elif opcion == "2": self.ver_reporte_ventas()
             elif opcion == "3": self.crear_reporte_mensual()
-            elif opcion == "4": self.cambiar_usuario()
-            elif opcion == "5":
+            elif opcion == "4": self.gestionar_archivos()
+            elif opcion == "5": self.cambiar_usuario()
+            elif opcion == "6":
                 print("Cerrando sistema. ¡Hasta luego!")
                 break
             else:
-                print("Opción no válida. Elige un número del 1 al 5.")
+                print("Opción no válida. Elige un número del 1 al 6.")
             
             input("\nPresiona Enter para volver al menú...")
 
